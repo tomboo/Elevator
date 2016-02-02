@@ -5,9 +5,10 @@ Created on Tue Jan 26 08:08:16 2016
 @author: Tom
 """
 
+from Requests import Requests
+
 UP = 1
 DOWN = 2
-FLOOR_COUNT = 6
 
 
 class ElevatorLogic(object):
@@ -26,9 +27,9 @@ class ElevatorLogic(object):
     """
 
     def __init__(self):
-        # Feel free to add any instance variables you want.
-        self.destination_floor = None
         self.callbacks = None
+        self._direction = None
+        self._requests = Requests()
 
     def on_called(self, floor, direction):
         """
@@ -41,7 +42,12 @@ class ElevatorLogic(object):
         floor: the floor that the elevator is being called to
         direction: the direction the caller wants to go, up or down
         """
-        self.destination_floor = floor
+        self._requests.insert(floor, direction)
+        if self._direction is None:
+            if floor > self.callbacks.current_floor:
+                self._direction = UP
+            elif floor < self.callbacks.current_floor:
+                self._direction = DOWN
 
     def on_floor_selected(self, floor):
         """
@@ -51,15 +57,34 @@ class ElevatorLogic(object):
 
         floor: the floor that was requested
         """
-        self.destination_floor = floor
+        if self._direction == UP and floor <= self.callbacks.current_floor:
+            print('select ignored:', floor)
+            return
+        if self._direction == DOWN and floor >= self.callbacks.current_floor:
+            print('select ignored:', floor)
+            return
+        self._requests.insert(floor)
+        if self._direction is None:
+            if floor > self.callbacks.current_floor:
+                self._direction = UP
+            elif floor < self.callbacks.current_floor:
+                self._direction = DOWN
 
     def on_floor_changed(self):
         """
         This lets you know that the elevator has moved one floor up or down.
         You should decide whether or not you want to stop the elevator.
         """
-        if self.destination_floor == self.callbacks.current_floor:
+        assert(self.callbacks.motor_direction in (UP, DOWN))
+
+        floor = self.callbacks.current_floor
+
+        maximum = self._requests.is_max(floor, self._direction)
+        member = self._requests.is_member(floor, self._direction)
+        if maximum or member:
             self.callbacks.motor_direction = None
+        if maximum and not member:
+            self.change_direction()
 
     def on_ready(self):
         """
@@ -67,7 +92,29 @@ class ElevatorLogic(object):
         Maybe passengers have embarked and disembarked. The doors are closed,
         time to actually move, if necessary.
         """
-        if self.destination_floor > self.callbacks.current_floor:
-            self.callbacks.motor_direction = UP
-        elif self.destination_floor < self.callbacks.current_floor:
-            self.callbacks.motor_direction = DOWN
+        assert(self.callbacks.motor_direction is None)
+
+        floor = self.callbacks.current_floor
+
+        if self._direction:
+            self._requests.delete(floor, self._direction)
+
+            if self._requests.is_empty():
+                self._direction = None
+                assert(self.callbacks.motor_direction is None)
+            elif self._requests.is_max(floor, self._direction):
+                self.change_direction()
+                assert(self.callbacks.motor_direction is None)
+                if self._requests.is_member(floor, self._direction):
+                    self._requests.delete(floor, self._direction)
+                else:
+                    self.callbacks.motor_direction = self._direction
+            else:
+                self.callbacks.motor_direction = self._direction
+
+    def change_direction(self):
+        assert(self._direction in (UP, DOWN))
+        if self._direction is UP:
+            self._direction = DOWN
+        elif self._direction is DOWN:
+            self._direction = UP

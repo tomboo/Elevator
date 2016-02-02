@@ -4,6 +4,7 @@ Created on Tue Jan 26 08:34:14 2016
 
 @author: Tom
 """
+# https://github.com/mshang/python-elevator-challenge
 
 UP = 1
 DOWN = 2
